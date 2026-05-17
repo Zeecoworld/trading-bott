@@ -22,12 +22,13 @@ body::before{content:'';position:fixed;inset:0;
 /* Header */
 header{position:sticky;top:0;z-index:100;background:rgba(5,8,16,.92);
   backdrop-filter:blur(12px);border-bottom:1px solid var(--b2);
-  display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:56px}
+  display:flex;align-items:center;justify-content:space-between;padding:0 24px;min-height:56px}
 .logo{font-family:var(--head);font-weight:800;font-size:1.35rem;letter-spacing:.12em;
   background:linear-gradient(90deg,var(--accent),var(--a2));
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  display:flex;align-items:center;}
 .logo span{-webkit-text-fill-color:var(--green)}
-.hdr-right{display:flex;align-items:center;gap:12px}
+.hdr-right{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
 .badge{font-family:var(--mono);font-size:.7rem;letter-spacing:.06em;
   padding:3px 9px;border-radius:3px;text-transform:uppercase}
 .b-paper{background:rgba(255,204,0,.1);color:var(--yellow);border:1px solid rgba(255,204,0,.3)}
@@ -39,12 +40,12 @@ header{position:sticky;top:0;z-index:100;background:rgba(5,8,16,.92);
 .b-side{background:rgba(255,204,0,.1);color:var(--yellow);border:1px solid rgba(255,204,0,.3)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--green);
-  box-shadow:0 0 8px var(--green);animation:blink 1.5s infinite}
+  box-shadow:0 0 8px var(--green);animation:blink 1.5s infinite; flex-shrink:0;}
 .dot.off{background:var(--red);box-shadow:0 0 8px var(--red);animation:none}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
 
 /* Layout */
-main{position:relative;z-index:1;max-width:1600px;margin:0 auto;padding:18px 18px 60px;
+main{position:relative;z-index:1;max-width:1600px;margin:0 auto;padding:18px;
   display:grid;grid-template-columns:270px 1fr;gap:14px}
 .sidebar{display:flex;flex-direction:column;gap:10px}
 .content{display:flex;flex-direction:column;gap:14px}
@@ -74,7 +75,9 @@ main{position:relative;z-index:1;max-width:1600px;margin:0 auto;padding:18px 18p
 .rb-side{background:rgba(255,204,0,.05);border-color:rgba(255,204,0,.25)}.rb-side .rv{color:var(--yellow)}
 
 /* Tabs */
-.tabs{display:flex;border-bottom:1px solid var(--b2);margin-bottom:14px}
+.tabs{display:flex;border-bottom:1px solid var(--b2);margin-bottom:14px;
+  overflow-x:auto;white-space:nowrap;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
+.tabs::-webkit-scrollbar{display:none;}
 .tab{font-family:var(--head);font-weight:600;font-size:.75rem;letter-spacing:.1em;
   text-transform:uppercase;padding:7px 16px;color:var(--t3);cursor:pointer;
   border-bottom:2px solid transparent;transition:all .2s;user-select:none}
@@ -82,8 +85,9 @@ main{position:relative;z-index:1;max-width:1600px;margin:0 auto;padding:18px 18p
 .tc{display:none}.tc.active{display:block}
 
 /* Positions grid */
+#pos-container {overflow-x:auto;-webkit-overflow-scrolling:touch;}
 .pgrid{display:grid;grid-template-columns:70px 55px 70px 85px 85px 100px 1fr;
-  font-family:var(--mono);font-size:.73rem}
+  font-family:var(--mono);font-size:.73rem;min-width:600px;}
 .ph{color:var(--t3);font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;
   padding:5px 7px;border-bottom:1px solid var(--b2)}
 .pc{padding:7px 7px;border-bottom:1px solid rgba(26,37,69,.4);display:flex;align-items:center;transition:background .15s}
@@ -109,7 +113,8 @@ main{position:relative;z-index:1;max-width:1600px;margin:0 auto;padding:18px 18p
 .cbar{height:100%;border-radius:2px;transition:width .3s}
 
 /* Trades table */
-.ttable{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:.73rem}
+.ttable-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+.ttable{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:.73rem;min-width:650px;}
 .ttable th{text-align:left;padding:6px 9px;font-size:.62rem;letter-spacing:.1em;
   color:var(--t3);text-transform:uppercase;border-bottom:1px solid var(--b2)}
 .ttable td{padding:7px 9px;border-bottom:1px solid rgba(26,37,69,.35)}
@@ -128,6 +133,7 @@ main{position:relative;z-index:1;max-width:1600px;margin:0 auto;padding:18px 18p
   color:var(--a2);border-radius:2px}
 
 /* Backtest cards */
+.bt-controls{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
 .bt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
 .bt-card{background:var(--bg2);border:1px solid var(--b1);border-radius:5px;padding:13px}
 .bt-sym{font-family:var(--head);font-weight:700;font-size:1rem;color:var(--accent);margin-bottom:9px}
@@ -163,13 +169,42 @@ main{position:relative;z-index:1;max-width:1600px;margin:0 auto;padding:18px 18p
 ::-webkit-scrollbar-track{background:var(--bg1)}
 ::-webkit-scrollbar-thumb{background:var(--b2);border-radius:2px}
 
-@media(max-width:960px){main{grid-template-columns:1fr}.sidebar,.content{grid-column:1}}
+/* ════ MOBILE RESPONSIVE QUERIES ════ */
+@media(max-width:960px){
+  main{grid-template-columns:1fr; padding:12px 12px 60px;}
+  .sidebar,.content{grid-column:1}
+}
+@media(max-width:600px){
+  header{
+    flex-direction:column;
+    height:auto;
+    padding:14px;
+    gap:12px;
+  }
+  .hdr-right{
+    width:100%;
+    justify-content:space-between;
+  }
+  .tab{padding:7px 12px; font-size:0.7rem;}
+  
+  .sig-item{
+    flex-direction:column;
+    gap:6px;
+  }
+  .sig-time{
+    margin-left:0;
+    align-self:flex-start;
+  }
+  .bt-grid{
+    grid-template-columns:1fr;
+  }
+}
 </style>
 </head>
 <body>
 
 <header>
-  <div class="logo">APEX<span>.</span>TRADER <span style="font-size:.65rem;letter-spacing:.06em;-webkit-text-fill-color:var(--t3)">v2</span>
+  <div class="logo">APEX<span>.</span>TRADER <span style="font-size:.65rem;letter-spacing:.06em;margin-left:4px;-webkit-text-fill-color:var(--t3)">v2</span>
     <span class="redis-tag">REDIS</span>
   </div>
   <div class="hdr-right">
@@ -181,7 +216,6 @@ main{position:relative;z-index:1;max-width:1600px;margin:0 auto;padding:18px 18p
 </header>
 
 <main>
-<!-- ════ SIDEBAR ════ -->
 <aside class="sidebar">
   <div class="panel">
     <div class="ptitle">Account</div>
@@ -215,7 +249,6 @@ main{position:relative;z-index:1;max-width:1600px;margin:0 auto;padding:18px 18p
   </div>
 </aside>
 
-<!-- ════ CONTENT ════ -->
 <div class="content">
   <div class="panel">
     <div class="ptitle">Equity Curve</div>
@@ -240,7 +273,7 @@ main{position:relative;z-index:1;max-width:1600px;margin:0 auto;padding:18px 18p
     </div>
 
     <div id="tc-trades" class="tc">
-      <div style="overflow-x:auto">
+      <div class="ttable-wrap">
         <table class="ttable">
           <thead><tr>
             <th>Symbol</th><th>Side</th><th>Qty</th><th>Entry</th>
@@ -256,7 +289,7 @@ main{position:relative;z-index:1;max-width:1600px;margin:0 auto;padding:18px 18p
     </div>
 
     <div id="tc-backtest" class="tc">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <div class="bt-controls">
         <label style="font-family:var(--mono);font-size:.72rem;color:var(--t2)">Days:</label>
         <select id="bt-days" style="background:var(--bg2);border:1px solid var(--b2);color:var(--t1);
           font-family:var(--mono);font-size:.75rem;padding:4px 9px;border-radius:3px">
@@ -395,7 +428,7 @@ function renderSignals(signals) {
     return `<div class="sig-item">
       <span class="sig-badge ${cls}">${s.action}</span>
       <div style="flex:1">
-        <div style="display:flex;align-items:center;gap:7px">
+        <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
           <span class="sig-sym">${s.symbol}</span>
           <span class="sig-meta">conf:${pct(conf)}</span>
           <span class="sig-meta">tech:${(parseFloat(s.tech_score||0)).toFixed(3)}</span>
