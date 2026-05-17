@@ -1,14 +1,3 @@
-#!/usr/bin/env python3
-"""
-main.py — APEX TRADER v2  (asyncio + Redis + aiohttp)
-
-Usage:
-  python main.py                   # bot + dashboard
-  python main.py --dashboard-only  # dashboard, no trading
-  python main.py --backtest        # backtests only, then exit
-  python main.py --status          # print account + Redis status, then exit
-  python main.py --flush-redis     # ⚠ wipe all Redis bot data, then exit
-"""
 from __future__ import annotations
 import argparse
 import asyncio
@@ -33,7 +22,9 @@ async def async_main(args: argparse.Namespace) -> None:
     from database import RedisDB
     db = RedisDB(cfg.REDIS_URL, ttl=cfg.REDIS_KEY_TTL)
 
-    logger.info("Connecting to Redis: %s", cfg.redis_display_url())
+    import re as _re2
+    _safe = lambda u: _re2.sub(r":([^@/]{3,})@", ":***@", u)
+    logger.info("Connecting to Redis: %s", _safe(cfg.REDIS_URL))
     try:
         await db.connect()
     except ConnectionError as e:
@@ -91,7 +82,7 @@ async def async_main(args: argparse.Namespace) -> None:
         return
 
     # ── Dashboard ─────────────────────────────────────────────────────────────
-    from dashboard.app import run_dashboard, set_deps
+    from app import run_dashboard, set_deps
     set_deps(strategy, db)
 
     tasks = []
@@ -154,13 +145,18 @@ Examples:
 
     setup_logging(cfg.LOG_LEVEL, cfg.LOG_FILE)
 
-    mode = "PAPER" if cfg.IS_PAPER_TRADING else "⚠  LIVE"
+    import re as _re
+    def _safe_url(url: str) -> str:
+        return _re.sub(r":([^@/]{3,})@", ":***@", url)
+
+    mode      = "PAPER" if cfg.IS_PAPER_TRADING else "⚠  LIVE"
+    redis_url = _safe_url(cfg.REDIS_URL)[:44]
     print(f"""
 ╔══════════════════════════════════════════════════════╗
 ║       APEX TRADER v2 — asyncio + Redis + aiohttp     ║
 ║  Mode   : {mode:<44}║
 ║  LLM    : {cfg.REPLICATE_MODEL[:44]:<44}║
-║  Redis  : {cfg.redis_display_url()[:44]:<44}║
+║  Redis  : {redis_url:<44}║
 ╚══════════════════════════════════════════════════════╝
 """, flush=True)
 
