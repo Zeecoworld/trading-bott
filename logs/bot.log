@@ -1,0 +1,2 @@
+2026-05-17 07:15:46  CRITICAL  main                          Redis connection failed at redis://localhost:6379/0: Error 22 connecting to localhost:6379. The remote computer refused the network connection.
+2026-05-17 07:15:46  CRITICAL  main                          Start with: docker run -p 6379:6379 redis:7-alpine
