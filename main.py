@@ -143,7 +143,7 @@ Examples:
     parser.add_argument("--flush-redis",    action="store_true", help="⚠ Wipe all Redis bot data")
     args = parser.parse_args()
 
-    setup_logging(cfg.LOG_LEVEL, cfg.LOG_FILE)
+    setup_logging(cfg.LOG_LEVEL)  # stdout only — no log file on Render
 
     import re as _re
     def _safe_url(url: str) -> str:

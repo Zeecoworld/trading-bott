@@ -1,5 +1,6 @@
 """
 config.py — Centralised async-ready configuration.
+Render-compatible: no local file paths, no os.makedirs().
 """
 import os
 from dataclasses import dataclass, field
@@ -12,7 +13,7 @@ load_dotenv()
 def _get(key: str, default=None, required: bool = False):
     val = os.getenv(key, default)
     if required and not val:
-        raise ValueError(f"Required env var '{key}' not set. Copy .env.example → .env")
+        raise ValueError(f"Required env var '{key}' not set. Add it in Render → Environment.")
     return val
 
 
@@ -47,7 +48,10 @@ class Config:
     ])
 
     # ── Web Server ───────────────────────────────────────────
-    DASHBOARD_PORT: int       = field(default_factory=lambda: int(_get("DASHBOARD_PORT", "5000")))
+    # On Render, PORT is injected automatically — always prefer it.
+    DASHBOARD_PORT: int       = field(default_factory=lambda: int(
+        os.getenv("PORT") or _get("DASHBOARD_PORT", "5000")
+    ))
     DASHBOARD_HOST: str       = field(default_factory=lambda: _get("DASHBOARD_HOST", "0.0.0.0"))
 
     # ── Scheduling ───────────────────────────────────────────
@@ -55,13 +59,14 @@ class Config:
     NEWS_MAX_AGE_HOURS: int   = field(default_factory=lambda: int(_get("NEWS_MAX_AGE_HOURS", "24")))
 
     # ── Logging ──────────────────────────────────────────────
+    # Stdout only on Render — LOG_FILE is intentionally removed.
     LOG_LEVEL: str            = field(default_factory=lambda: _get("LOG_LEVEL", "INFO"))
-    LOG_FILE: str             = field(default_factory=lambda: _get("LOG_FILE", "logs/bot.log"))
 
     def __post_init__(self):
         self.IS_PAPER_TRADING = "paper" in self.ALPACA_BASE_URL.lower()
-        os.makedirs("data", exist_ok=True)
-        os.makedirs("logs", exist_ok=True)
+        # ── REMOVED: os.makedirs("data") and os.makedirs("logs") ──
+        # Render's filesystem is ephemeral and read-only in most paths.
+        # All persistence goes through Redis. No local directories needed.
 
     @property
     def take_profit_pct(self) -> float:
@@ -71,11 +76,11 @@ class Config:
 cfg = Config()
 
 RSS_FEEDS = [
-    ("Reuters Business",  "https://feeds.reuters.com/reuters/businessNews"),
-    ("Reuters Markets",   "https://feeds.reuters.com/reuters/financialsNews"),
-    ("Yahoo Finance",     "https://finance.yahoo.com/news/rssindex"),
-    ("MarketWatch",       "https://feeds.marketwatch.com/marketwatch/topstories/"),
-    ("CNBC Top",          "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114"),
-    ("Benzinga",          "https://www.benzinga.com/feed"),
-    ("Motley Fool",       "https://www.fool.com/feeds/index.aspx"),
+    ("Reuters Business", "https://feeds.reuters.com/reuters/businessNews"),
+    ("Reuters Markets",  "https://feeds.reuters.com/reuters/financialsNews"),
+    ("Yahoo Finance",    "https://finance.yahoo.com/news/rssindex"),
+    ("MarketWatch",      "https://feeds.marketwatch.com/marketwatch/topstories/"),
+    ("CNBC Top",         "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114"),
+    ("Benzinga",         "https://www.benzinga.com/feed"),
+    ("Motley Fool",      "https://www.fool.com/feeds/index.aspx"),
 ]
