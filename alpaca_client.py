@@ -6,7 +6,7 @@ so they never block the event loop.
 from __future__ import annotations
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import partial
 from typing import Any, Dict, List, Optional
 
@@ -20,6 +20,7 @@ from alpaca.trading.enums import OrderSide, TimeInForce, QueryOrderStatus
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest
 from alpaca.data.timeframe import TimeFrame
+from alpaca.data.enums import DataFeed          # ← required for real-time quotes
 
 logger = logging.getLogger(__name__)
 
@@ -173,13 +174,14 @@ class AlpacaClient:
         end: Optional[datetime] = None,
         limit: int = 200,
     ) -> pd.DataFrame:
-        start = start or datetime.utcnow() - timedelta(days=60)
-        end   = end   or datetime.utcnow()
+        start = start or datetime.now(timezone.utc) - timedelta(days=60)
+        end   = end   or datetime.now(timezone.utc)
 
         def _fetch():
             req  = StockBarsRequest(
                 symbol_or_symbols=symbol, timeframe=timeframe,
                 start=start, end=end, limit=limit,
+                feed=DataFeed.IEX,          # real-time feed; avoids 15-min delay
             )
             bars = self.data.get_stock_bars(req)
             df   = bars.df
@@ -201,17 +203,28 @@ class AlpacaClient:
     async def get_daily_bars(self, symbol: str, days: int = 252) -> pd.DataFrame:
         return await self.get_bars(
             symbol, TimeFrame.Day,
-            start=datetime.utcnow() - timedelta(days=days),
+            start=datetime.now(timezone.utc) - timedelta(days=days),
         )
 
     async def get_latest_quote(self, symbol: str) -> Optional[float]:
         try:
             def _q():
-                req   = StockLatestQuoteRequest(symbol_or_symbols=symbol)
+                req   = StockLatestQuoteRequest(
+                    symbol_or_symbols=symbol,
+                    feed=DataFeed.IEX,      # real-time; SIP requires paid subscription
+                )
                 quote = self.data.get_stock_latest_quote(req)
                 q     = quote[symbol]
-                return float((q.ask_price + q.bid_price) / 2)
-            return await _t(_q)
+                ask   = float(q.ask_price) if q.ask_price else 0.0
+                bid   = float(q.bid_price) if q.bid_price else 0.0
+                # Prefer mid-price; fall back to whichever side is non-zero
+                if ask > 0 and bid > 0:
+                    return (ask + bid) / 2.0
+                return ask or bid or None
+            price = await _t(_q)
+            if price and price > 0:
+                return price
+            return None
         except Exception as e:
             logger.warning("Quote failed %s: %s", symbol, e)
             return None

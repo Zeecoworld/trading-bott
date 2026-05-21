@@ -343,15 +343,33 @@ class TradingStrategy:
 
     async def get_status(self) -> Dict[str, Any]:
         try:
-            account, clock, positions, orders, stats, signals = await asyncio.gather(
-                self.alpaca.get_account(),
-                self.alpaca.get_clock(),
-                self.alpaca.get_positions(),
-                self.alpaca.get_open_orders(),
-                self.db.trade_stats(),
-                self.db.get_signals(limit=100),
+            # 15-second hard timeout — Alpaca API can be slow; we must not hang
+            # the HTTP handler forever (browser shows TypeError: Failed to fetch
+            # when the server never responds).
+            account, clock, positions, orders, stats, signals = await asyncio.wait_for(
+                asyncio.gather(
+                    self.alpaca.get_account(),
+                    self.alpaca.get_clock(),
+                    self.alpaca.get_positions(),
+                    self.alpaca.get_open_orders(),
+                    self.db.trade_stats(),
+                    self.db.get_signals(limit=100),
+                ),
+                timeout=15.0,
             )
+        except asyncio.TimeoutError:
+            logger.warning("get_status() timed out after 15s — returning partial state")
+            return {
+                "error":         "status_timeout",
+                "is_running":    self._running,
+                "market_regime": self._market_regime,
+                "last_scan":     self._last_scan,
+                "watchlist":     cfg.WATCHLIST,
+                "paper_trading": cfg.IS_PAPER_TRADING,
+                "daily_pnl":     self.risk.daily_pnl,
+            }
         except Exception as e:
+            logger.error("get_status() error: %s", e)
             return {"error": str(e)}
 
         return {

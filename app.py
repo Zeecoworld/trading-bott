@@ -312,7 +312,12 @@ async def handle_logs(request: web.Request) -> web.Response:
 async def handle_status(request: web.Request) -> web.Response:
     if not _strategy:
         return web.json_response({"error": "Strategy not initialised"}, status=503)
-    data = await _strategy.get_status()
+    try:
+        data = await asyncio.wait_for(_strategy.get_status(), timeout=20.0)
+    except asyncio.TimeoutError:
+        return web.json_response({"error": "status_timeout"}, status=504)
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
     return web.json_response(data, dumps=lambda d: json.dumps(d, default=str))
 
 

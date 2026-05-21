@@ -309,7 +309,9 @@ main{position:relative;z-index:1;max-width:1600px;margin:0 auto;padding:18px;
 // ══════════════════════════════════════════════════════
 // APEX TRADER v2 — Native WebSocket dashboard
 // ══════════════════════════════════════════════════════
-const WS_URL = `ws://${location.host}/ws`;
+// Auto-detect wss:// when served over HTTPS (required on Render).
+// ws:// from an https:// page is blocked as mixed content.
+const WS_URL = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`;
 let ws = null, eqChart = null, state = {};
 const RECONNECT_MS = 3000;
 
@@ -336,6 +338,9 @@ function handleMsg(msg) {
     case 'halt':     log(`HALT: ${data.reason}`,'w'); break;
     case 'error':    log(`ERR: ${data.message}`,'e'); break;
     case 'scan_complete': log(`Scan ✓ (${data.scanned} symbols)`,'t'); fetchAll(); break;
+    // Bot server-side logs streamed live
+    case 'log':      addBotLog(data); break;
+    case 'log_history': (data||[]).forEach(addBotLog); break;
   }
 }
 
@@ -552,6 +557,18 @@ function log(msg,cls='') {
   d.innerHTML=`<span class="lts">[${new Date().toLocaleTimeString()}]</span>${msg}`;
   logEl.prepend(d);
   while(logEl.children.length>100) logEl.removeChild(logEl.lastChild);
+}
+
+// Pipe server-side log entries into the Live Log panel
+const LOG_COLORS = {INFO:'t', WARNING:'w', ERROR:'e', CRITICAL:'e', DEBUG:''};
+function addBotLog(entry) {
+  if(!entry) return;
+  const ts  = entry.timestamp ? entry.timestamp.slice(11,19) : '';
+  const cls = LOG_COLORS[entry.level] || '';
+  // Use the plain message field; strip the timestamp prefix that formatter adds
+  const raw = (entry.message || '').replace(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\s+\S+\s+\S+\s+/, '');
+  const msg = `[${entry.level}] ${entry.logger ? entry.logger.split('.').pop()+': ' : ''}${raw}`;
+  log(msg, cls);
 }
 
 setInterval(fetchAll, 30_000);
