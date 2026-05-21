@@ -1,12 +1,19 @@
 """
 bot/news_engine.py — Fully async multi-source news aggregation.
-HTTP fetching via aiohttp; RSS parsing and DDG run in thread pool.
+
+DDG 403 fix:
+  DuckDuckGo blocks servers that fire many simultaneous news requests.
+  We now run DDG calls sequentially with a small random jitter between each
+  request (1-3 seconds). RSS feeds are still fetched concurrently via aiohttp
+  since they are direct HTTP to known servers that don't rate-limit this way.
 """
 from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import random
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Set
 
@@ -51,6 +58,12 @@ DDG_GENERAL_QUERIES = [
 _TIMEOUT = aiohttp.ClientTimeout(total=12, connect=5)
 _HEADERS = {"User-Agent": "ApexTrader/2.0 (news aggregator)"}
 
+# DDG rate-limit guard: max concurrent DDG calls and jitter between each
+_DDG_SEMAPHORE = asyncio.Semaphore(1)   # only 1 DDG call at a time globally
+_DDG_MIN_DELAY = 1.2                    # seconds between calls (minimum)
+_DDG_MAX_DELAY = 3.0                    # seconds between calls (maximum)
+_DDG_MAX_RETRIES = 2
+
 
 class NewsItem:
     __slots__ = ["title", "summary", "source", "url", "symbols",
@@ -58,11 +71,11 @@ class NewsItem:
 
     def __init__(self, title: str, summary: str, source: str, url: str,
                  symbols: List[str], published_at: Optional[datetime]):
-        self.title       = title.strip()
-        self.summary     = summary.strip()[:500]
-        self.source      = source
-        self.url         = url
-        self.symbols     = sorted(set(symbols))
+        self.title        = title.strip()
+        self.summary      = summary.strip()[:500]
+        self.source       = source
+        self.url          = url
+        self.symbols      = sorted(set(symbols))
         self.published_at = published_at or datetime.now(timezone.utc)
         self.fingerprint  = hashlib.md5(self.title.lower().encode()).hexdigest()[:12]
 
@@ -87,44 +100,73 @@ class NewsEngine:
     # ── Public API ────────────────────────────────────────────────────────────
 
     async def fetch_all(self) -> List[NewsItem]:
-        """Fetch all sources concurrently, deduplicate, age-filter."""
-        async with aiohttp.ClientSession(
-            timeout=_TIMEOUT, headers=_HEADERS
-        ) as session:
-            tasks: List[asyncio.Task] = []
+        """
+        Fetch all sources. RSS feeds run concurrently.
+        DDG calls run sequentially with jitter to avoid 403 rate-limiting.
+        """
+        # ── Step 1: RSS (concurrent, they don't rate-limit) ───────────────────
+        async with aiohttp.ClientSession(timeout=_TIMEOUT, headers=_HEADERS) as session:
+            rss_tasks = [
+                asyncio.create_task(self._fetch_rss(session, name, url))
+                for name, url in RSS_FEEDS
+            ]
+            rss_batches = await asyncio.gather(*rss_tasks, return_exceptions=True)
 
-            # RSS feeds — fetch HTML async, parse in thread
-            for name, url in RSS_FEEDS:
-                tasks.append(asyncio.create_task(
-                    self._fetch_rss(session, name, url)
-                ))
+        # ── Step 2: DDG — sequential with throttling ──────────────────────────
+        ddg_items: List[NewsItem] = []
 
-            # DDG — entirely sync, run in thread pool
-            tasks.append(asyncio.create_task(
-                asyncio.to_thread(self._ddg_general)
-            ))
-            for sym in self.watchlist[:10]:
-                tasks.append(asyncio.create_task(
-                    asyncio.to_thread(self._ddg_ticker, sym)
-                ))
+        # General market queries first
+        ddg_items.extend(await self._ddg_query_safe(self._ddg_general))
 
-            batches = await asyncio.gather(*tasks, return_exceptions=True)
+        # Per-ticker queries — limited to first 6 tickers to avoid long waits
+        for sym in self.watchlist[:6]:
+            items = await self._ddg_query_safe(self._ddg_ticker, sym)
+            ddg_items.extend(items)
 
-        items: List[NewsItem] = []
-        for batch in batches:
-            if isinstance(batch, Exception):
-                logger.debug("News source error: %s", batch)
-            elif isinstance(batch, list):
-                items.extend(batch)
+        # ── Combine ───────────────────────────────────────────────────────────
+        all_items: List[NewsItem] = []
+        for batch in rss_batches:
+            if isinstance(batch, list):
+                all_items.extend(batch)
+        all_items.extend(ddg_items)
 
-        return self._dedup_filter(items)
+        return self._dedup_filter(all_items)
 
     async def fetch_for_symbol(self, symbol: str) -> List[NewsItem]:
-        ddg_items = await asyncio.to_thread(self._ddg_ticker, symbol)
+        ddg_items = await self._ddg_query_safe(self._ddg_ticker, symbol)
         all_items = await self.fetch_all()
         sym_items = [i for i in all_items if symbol in i.symbols]
         merged    = {i.fingerprint: i for i in ddg_items + sym_items}
         return list(merged.values())
+
+    # ── DDG throttled wrapper ─────────────────────────────────────────────────
+
+    async def _ddg_query_safe(self, fn, *args) -> List[NewsItem]:
+        """
+        Run a DDG sync function via thread pool, but only one at a time
+        (semaphore) with random jitter between calls to avoid 403s.
+        Retries once on 403/Ratelimit errors with a longer wait.
+        """
+        async with _DDG_SEMAPHORE:
+            for attempt in range(1, _DDG_MAX_RETRIES + 1):
+                try:
+                    items = await asyncio.to_thread(fn, *args)
+                    # Small jitter AFTER a successful call too, so next call
+                    # doesn't immediately fire
+                    await asyncio.sleep(random.uniform(_DDG_MIN_DELAY, _DDG_MAX_DELAY))
+                    return items
+                except Exception as e:
+                    err = str(e).lower()
+                    is_rate_limit = "403" in str(e) or "ratelimit" in err or "rate limit" in err
+                    if is_rate_limit and attempt < _DDG_MAX_RETRIES:
+                        wait = random.uniform(8.0, 15.0)   # longer back-off on 403
+                        logger.debug("DDG 403 rate-limit, backing off %.1fs (attempt %d/%d)",
+                                     wait, attempt, _DDG_MAX_RETRIES)
+                        await asyncio.sleep(wait)
+                    else:
+                        logger.debug("DDG query failed (%s): %s", fn.__name__, e)
+                        return []
+        return []
 
     # ── RSS (aiohttp fetch + feedparser in thread) ────────────────────────────
 
@@ -134,7 +176,6 @@ class NewsEngine:
         try:
             async with session.get(url) as resp:
                 content = await resp.read()
-            # feedparser is CPU-bound; offload to thread
             feed  = await asyncio.to_thread(feedparser.parse, content)
             items = []
             for entry in feed.entries[:25]:
@@ -159,30 +200,34 @@ class NewsEngine:
             logger.debug("RSS %s error: %s", name, e)
             return []
 
-    # ── DuckDuckGo (sync, runs in thread) ────────────────────────────────────
+    # ── DuckDuckGo (sync, called from _ddg_query_safe via to_thread) ──────────
 
     def _ddg_ticker(self, symbol: str) -> List[NewsItem]:
+        """Fetch news for one ticker from DDG. Runs in thread pool."""
         items: List[NewsItem] = []
         try:
             with DDGS() as ddg:
-                for q in (f"{symbol} stock news", f"${symbol} earnings analyst"):
-                    for r in ddg.news(q, max_results=8, timelimit="d"):
-                        item = self._parse_ddg(r, [symbol])
-                        if item:
-                            items.append(item)
+                # One query per ticker (not two) to halve the request rate
+                for r in ddg.news(f"{symbol} stock news", max_results=8, timelimit="d"):
+                    item = self._parse_ddg(r, [symbol])
+                    if item:
+                        items.append(item)
         except Exception as e:
             logger.debug("DDG ticker(%s): %s", symbol, e)
         return items
 
     def _ddg_general(self) -> List[NewsItem]:
+        """Fetch general market news from DDG. Runs in thread pool."""
         items: List[NewsItem] = []
         try:
             with DDGS() as ddg:
-                for q in DDG_GENERAL_QUERIES:
-                    for r in ddg.news(q, max_results=10, timelimit="d"):
+                # Two general queries instead of four to reduce rate-limit risk
+                for q in DDG_GENERAL_QUERIES[:2]:
+                    for r in ddg.news(q, max_results=8, timelimit="d"):
                         item = self._parse_ddg(r, [])
                         if item:
                             items.append(item)
+                    time.sleep(random.uniform(0.8, 1.5))   # intra-session delay
         except Exception as e:
             logger.debug("DDG general: %s", e)
         return items

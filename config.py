@@ -27,7 +27,7 @@ class Config:
 
     # ── Replicate LLM ────────────────────────────────────────
     REPLICATE_API_TOKEN: str  = field(default_factory=lambda: _get("REPLICATE_API_TOKEN", required=True))
-    REPLICATE_MODEL: str      = field(default_factory=lambda: _get("REPLICATE_MODEL", "meta/llama-3.3-70b-instruct"))
+    REPLICATE_MODEL: str      = field(default_factory=lambda: _get("REPLICATE_MODEL", "meta/meta-llama-3-70b-instruct"))
 
     # ── Redis ────────────────────────────────────────────────
     REDIS_URL: str            = field(default_factory=lambda: _get("REDIS_URL", "redis://localhost:6379/0"))
