@@ -23,7 +23,7 @@ MODELS: Dict[str, str] = {
     "mixtral-8x7b":  "mistralai/mixtral-8x7b-instruct-v0.1",
     "deepseek-r1":   "deepseek-ai/deepseek-r1",
 }
-DEFAULT_MODEL = "meta/llama-3.3-70b-instruct"
+DEFAULT_MODEL = "meta/meta-llama-3-70b-instruct"
 
 
 def _collect(stream: Any) -> str:
