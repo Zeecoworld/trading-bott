@@ -61,13 +61,10 @@ class TradeDecision:
 class AIDecisionEngine:
     def __init__(self, api_token: str, model: Optional[str] = None):
         os.environ["REPLICATE_API_TOKEN"] = api_token
-        self.model = MODELS.get(
-            model or os.getenv("REPLICATE_MODEL", DEFAULT_MODEL),
-            model or DEFAULT_MODEL,
-        )
+        _model_key = model or os.getenv("REPLICATE_MODEL", DEFAULT_MODEL)
+        self.model = MODELS.get(_model_key, _model_key)
         logger.info("AI engine: Replicate / %s", self.model)
 
-    # ── Internal sync call (run via to_thread) ────────────────────────────────
 
     def _run_sync(self, system: str, user: str, max_tokens: int = 512) -> str:
         output = replicate.run(
